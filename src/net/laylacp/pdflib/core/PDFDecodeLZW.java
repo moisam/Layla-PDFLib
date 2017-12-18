@@ -1,3 +1,24 @@
+/*
+ *    Programmed By: Mohammed Isam [mohammed_isam1984@yahoo.com]
+ *    Copyright 2017 (c)
+ *
+ *    file: PDFDecodeLZW.java
+ *    This file is part of Layla-PDFLib.
+ *
+ *    Layla-PDFLib is free software: you can redistribute it and/or modify
+ *    it under the terms of the GNU Lesser General Public License as published by
+ *    the Free Software Foundation, either version 3 of the License, or
+ *    (at your option) any later version.
+ *
+ *    Layla-PDFLib is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *    GNU Lesser General Public License for more details.
+ *
+ *    You should have received a copy of the GNU Lesser General Public License
+ *    along with Layla-PDFLib.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 package net.laylacp.pdflib.core;
 
 import java.io.*;
@@ -121,37 +142,4 @@ public class PDFDecodeLZW {
             return Integer.parseInt(temp1.substring(4, 8) + temp2, 2);
         }
     }
-
-
-    /* http://rosettacode.org/wiki/LZW_compression#Java */
-
-    /*
-    public static String decompress(List<Integer> compressed) {
-        // Build the dictionary.
-        int dictSize = 256;
-        Map<Integer,String> dictionary = new HashMap<Integer,String>();
-        for (int i = 0; i < 256; i++)
-            dictionary.put(i, "" + (char)i);
-
-        String w = "" + (char)(int)compressed.remove(0);
-        StringBuffer result = new StringBuffer(w);
-        for (int k : compressed) {
-            String entry;
-            if (dictionary.containsKey(k))
-                entry = dictionary.get(k);
-            else if (k == dictSize)
-                entry = w + w.charAt(0);
-            else
-                throw new IllegalArgumentException("Bad compressed k: " + k);
-
-            result.append(entry);
-
-            // Add w+entry[0] to the dictionary.
-            dictionary.put(dictSize++, w + entry.charAt(0));
-
-            w = entry;
-        }
-        return result.toString();
-    }
-    */
 }
