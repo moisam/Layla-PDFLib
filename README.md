@@ -34,6 +34,8 @@ The library follows PDF standard version 1.7. The following features are not ful
 * Type 0 and Type 3 fonts
 * The transparent image model
 * PostScript (PS) forms
+* Crypt filters
+* Interactive forms
 
 # License
 This library is licensed under GNU Lesser General Public License (LGPL) v3.0. This is because many of you will need to include the PDF library in your proprietary or closed source programs, which is fine by me.
