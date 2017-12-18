@@ -7,16 +7,15 @@ As promised, the library is very easy to use. See the examples below.
 ## Getting started
 The following code shows how to get the first page of a PDF file. It is pretty straight forward.
 
-        PDFReaderExample prog = new PDFReaderExample();
         PDFReader pdfReader = new PDFReader();
         // parse the PDF document
-        prog.pdfDocument = pdfReader.parse("/path/to/file.pdf");
-        if(prog.pdfDocument == null) {
+        PDFDocument pdfDocument = pdfReader.parse("/path/to/file.pdf");
+        if(pdfDocument == null) {
             System.out.println("Failed to open PDF. Error: " + pdfReader.getLastError());
             return;
         }
         // get the page count
-        int pageCount = prog.pdfDocument.getPageCount();
+        int pageCount = pdfDocument.getPageCount();
         if(pageCount > 0) {
                 // load the first page as an image
                 BufferedImage page = pdfDocument.getPage(0);
