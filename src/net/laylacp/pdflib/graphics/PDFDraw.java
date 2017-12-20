@@ -161,9 +161,19 @@ public class PDFDraw {
                     object = gs.get("RI");
                     if(object != null) setRenderingIntent(object.getStringValue());
                     object = gs.get("CA");
-                    if(object != null) curState.setAlphaStroke((float) object.getNumericValue());
+                    if(object != null) {
+                        //curState.setAlphaStroke((float) object.getNumericValue());
+                        float f = (float) object.getNumericValue();
+                        f *= curState.getAlphaStroke();
+                        curState.setAlphaStroke(f);
+                    }
                     object = gs.get("ca");
-                    if(object != null) curState.setAlphaOthers((float) object.getNumericValue());
+                    if(object != null) {
+                        //curState.setAlphaOthers((float) object.getNumericValue());
+                        float f = (float) object.getNumericValue();
+                        f *= curState.getAlphaOthers();
+                        curState.setAlphaOthers(f);
+                    }
                     object = gs.get("AIS");
                     if(object != null) curState.setAlphaIsShape(object.getBooleanValue());
                     object = gs.get("BM");
@@ -398,7 +408,7 @@ public class PDFDraw {
             //System.out.println("Tlm = " + Tlm.toString());
             TextState textState = curState.getTextState();
             textState.setTlm(Tlm);
-            textState.setTm(Tlm);
+            textState.setTm(new AffineTransform(Tlm));
             //canvas.setTransform(curState.getCTM());
             //canvas.transform(curState.getTextState().getTm());
         } else if(operatorIndex == 42) {                        // T*
@@ -414,7 +424,7 @@ public class PDFDraw {
                 newTextObject = false;
             }
             */
-            canvas.transform(curState.getTextState().getTm());
+            //canvas.transform(curState.getTextState().getTm());
             PDFObject object = (PDFObject) operands.pop();
             byte[] bytes = object.getBytes();
             if(bytes != null) textShow(bytes, Tj);
@@ -434,8 +444,7 @@ public class PDFDraw {
                 newTextObject = false;
             }
             */
-            canvas.transform(curState.getTextState().getTm());
-            //float Tj = 0;
+            //canvas.transform(curState.getTextState().getTm());
             ArrayList<PDFObject> arrayList = array.getArrayValue();
             int len = arrayList.size();
             for(int j = 0; j < len; j++) {
@@ -621,9 +630,10 @@ public class PDFDraw {
 
     private void textShow(byte[] bytes, float Tj) {
         // get the CTM
-        //AffineTransform CTM = curState.getCTM();
+        AffineTransform CTM = new AffineTransform(canvas.getTransform());
         // concatenate Tm
-        //AffineTransform Tm = curState.getTextState().getTm();
+        AffineTransform Tm = curState.getTextState().getTm();
+        canvas.transform(Tm);
         TextState textState = curState.getTextState();
         float Tfs = textState.getFontSize();
         float Tc = textState.getCharSpace();
@@ -684,22 +694,23 @@ public class PDFDraw {
             //Tm.translate(tx, ty);
             PDFReader.__DEBUG__("textShow","tx = " + tx + ", w0 = " + w0 + ", Tfs = " +Tfs + ", Tc = " + Tc + ", Tw = " + Tw + ", Th = " + Th);
             canvas.translate(tx, ty);
-            //Tm.translate(tx, ty);
+            Tm.translate(tx, ty);
             Tj = 0;
             PDFReader.__DEBUG__("textShow", "CTM    = " + canvas.getTransform().toString());
         }
         // restore CTM
-        //canvas.setTransform(CTM);
+        canvas.setTransform(CTM);
         // add new clipping path (if any) to current clipping path
         if(renderMode >= TextState.RENDER_FILL_CLIP) canvas.clip(clip);
     }
 
     private void textMoveToNextLine(float tx, float ty) {
+        PDFReader.__DEBUG__("textMoveToNextLine", "tx=" + tx + ", ty=" + ty);
         TextState textState = curState.getTextState();
         AffineTransform Tlm = textState.getTlm();
         Tlm.translate(tx, ty);
         textState.setTlm(Tlm);
-        textState.setTm(Tlm);
+        textState.setTm(new AffineTransform(Tlm));
     }
 
     private Color getColor(PDFColorSpace cs, ObjectStack operands) {
