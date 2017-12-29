@@ -45,6 +45,7 @@ public class PDFDraw {
     private Path2D curPath;
     private Path2D curSubPath;
     private Point.Double curPoint;     // last point added to curPath
+    private PDFPattern curPattern;
     private ObjectStack operands;
 
     private BufferedImage canvasImg;
@@ -59,10 +60,12 @@ public class PDFDraw {
     }
 
     public boolean initCurState() {
-        if(!initUserSpace()) {
-            return false;
-        }
+        if(!initUserSpace()) return false;
+        if(!initObjectStack()) return false;
+        return true;
+    }
 
+    public boolean initObjectStack() {
         operands = new ObjectStack();
         try {
             graphicsStateStack.popAll();
@@ -95,484 +98,537 @@ public class PDFDraw {
     }
 
 
-    boolean newTextObject = true;
-
     private void doOperation(int operatorIndex, ObjectStack operands) throws InvalidFormatException {
         //String op = Operator.PDFOperators[operatorIndex].name;
-        float Tj = 0;
-        if(operatorIndex == 0) {                                // w
-            Float w = Float.parseFloat(operands.pop().toString());
-            curState.setLineWidth(w);
-            //updateCanvasStroke();
-        } else if(operatorIndex == 1) {                         // J
-            int i = Integer.parseInt(operands.pop().toString());
-            curState.setLineCap(i);
-            //updateCanvasStroke();
-        } else if(operatorIndex == 2) {                         // j
-            int i = Integer.parseInt(operands.pop().toString());
-            curState.setLineJoin(i);
-            //updateCanvasStroke();
-        } else if(operatorIndex == 3) {                         // M
-            Float m = Float.parseFloat(operands.pop().toString());
-            curState.setMiterLimit(m);
-            //updateCanvasStroke();
-        } else if(operatorIndex == 4) {                         // d
-            // get the dash phase
-            int dPhase = Integer.parseInt(operands.pop().toString());
-            // get the dash array
-            PDFObject dArrayObj = (PDFObject) operands.pop();
-            setDashPattern(dArrayObj, dPhase);
-        } else if(operatorIndex == 5) {                         // ri
-            String intent = operands.pop().toString();
-            setRenderingIntent(intent);
-        } else if(operatorIndex == 6) {                         // i
-            /*
-             * TODO: flatness tolerance, page 316.
-             */
+        float Tj = 0, f2;
+        int i;
+        switch (operatorIndex) {
+            case (0):                         // w
+                Float wi = Float.parseFloat(operands.pop().toString());
+                curState.setLineWidth(wi);
+                //updateCanvasStroke();
+                break;
+            case (1):                         // J
+                i = Integer.parseInt(operands.pop().toString());
+                curState.setLineCap(i);
+                //updateCanvasStroke();
+                break;
+            case (2):                         // j
+                i = Integer.parseInt(operands.pop().toString());
+                curState.setLineJoin(i);
+                //updateCanvasStroke();
+                break;
+            case (3):                         // M
+                Float m = Float.parseFloat(operands.pop().toString());
+                curState.setMiterLimit(m);
+                //updateCanvasStroke();
+                break;
+            case (4):                         // d
+                // get the dash phase
+                int dPhase = Integer.parseInt(operands.pop().toString());
+                // get the dash array
+                PDFObject dArrayObj = (PDFObject) operands.pop();
+                setDashPattern(dArrayObj, dPhase);
+                break;
+            case (5):                         // ri
+                String intent = operands.pop().toString();
+                setRenderingIntent(intent);
+                break;
+            case (6):                         // i
+                /*
+                 * TODO: flatness tolerance, page 316.
+                 */
 
-        } else if(operatorIndex == 7) {                         // gs
-            /*
-             * SEE 8.4.5 Graphics State Parameter Dictionaries, page 128.
-             * SEE ALSO Table 58 – Entries in a Graphics State Parameter Dictionary, page 128.
-             */
-            String dictName = operands.pop().toString();
-            PDFObject ExtGStateObject = Resources.get("ExtGState");
-            HashMap<String, PDFObject> ExtGState = ExtGStateObject.getDictionaryValueNoFail(pdfDocument);
-            PDFObject gsDict = ExtGState.get(dictName);
-            if(gsDict != null && gsDict.getType() == PDFObject.OBJECT_TYPE.INDIRECT_REF_OBJECT) {
-                PDFObjectStream gsObj = pdfDocument.reader.getObjectStreamById(gsDict.getIdValue(), pdfDocument);
-                HashMap<String, PDFObject> gs = gsObj.dictionary;
-                if(gs.get("Type").getStringValue().equalsIgnoreCase("ExtGState")) {
-                    PDFObject object = gs.get("LW");
-                    if(object != null) curState.setLineWidth((float) object.getNumericValue());
-                    object = gs.get("LC");
-                    if(object != null) curState.setLineCap(object.getIntValue());
-                    object = gs.get("LJ");
-                    if(object != null) curState.setLineJoin(object.getIntValue());
-                    object = gs.get("ML");
-                    if(object != null) curState.setLineWidth((float) object.getNumericValue());
-                    object = gs.get("D");
-                    if(object != null && object.getType() == PDFObject.OBJECT_TYPE.ARRAY_OBJECT) {
-                        ArrayList<PDFObject> arrayList = object.getArrayValueNoFail(pdfDocument);
-                        PDFObject dArray = arrayList.get(0);
-                        int dPhase = arrayList.get(1).getIntValue();
-                        setDashPattern(dArray, dPhase);
-                    }
-                    object = gs.get("RI");
-                    if(object != null) setRenderingIntent(object.getStringValue());
-                    object = gs.get("CA");
-                    if(object != null) {
-                        //curState.setAlphaStroke((float) object.getNumericValue());
-                        float f = (float) object.getNumericValue();
-                        f *= curState.getAlphaStroke();
-                        curState.setAlphaStroke(f);
-                    }
-                    object = gs.get("ca");
-                    if(object != null) {
-                        //curState.setAlphaOthers((float) object.getNumericValue());
-                        float f = (float) object.getNumericValue();
-                        f *= curState.getAlphaOthers();
-                        curState.setAlphaOthers(f);
-                    }
-                    object = gs.get("AIS");
-                    if(object != null) curState.setAlphaIsShape(object.getBooleanValue());
-                    object = gs.get("BM");
-                    if(object != null) {
-                        if(object.getType() == PDFObject.OBJECT_TYPE.NAME_OBJECT) {
-                            String blendStr = object.getStringValue();
-                            BlendComposite.BlendingMode blendingMode = getBlendComposite(blendStr);
-                            curState.setBlendMode(blendingMode);
-                            /*
-                            Composite composite = getBlendComposite(blendStr);
-                            if(composite == null) composite = AlphaComposite.Src;
-                            canvas.setComposite(composite);
-                            curState.setBlendMode(composite);
-                            */
-                        } else if(object.getType() == PDFObject.OBJECT_TYPE.ARRAY_OBJECT) {
-                            ArrayList<PDFObject> arrayList = object.getArrayValue();
-                            for(PDFObject pdfObject : arrayList) {
-                                String blendStr = pdfObject.getStringValue();
+                break;
+            case (7):                         // gs
+                /*
+                 * SEE 8.4.5 Graphics State Parameter Dictionaries, page 128.
+                 * SEE ALSO Table 58 – Entries in a Graphics State Parameter Dictionary, page 128.
+                 */
+                String dictName = operands.pop().toString();
+                PDFObject ExtGStateObject = Resources.get("ExtGState");
+                HashMap<String, PDFObject> ExtGState = ExtGStateObject.getDictionaryValueNoFail(pdfDocument);
+                PDFObject gsDict = ExtGState.get(dictName);
+                if (gsDict != null && gsDict.getType() == PDFObject.OBJECT_TYPE.INDIRECT_REF_OBJECT) {
+                    PDFObjectStream gsObj = pdfDocument.reader.getObjectStreamById(gsDict.getIdValue(), pdfDocument);
+                    HashMap<String, PDFObject> gs = gsObj.dictionary;
+                    if (gs.get("Type").getStringValue().equalsIgnoreCase("ExtGState")) {
+                        PDFObject object = gs.get("LW");
+                        if (object != null) curState.setLineWidth((float) object.getNumericValue());
+                        object = gs.get("LC");
+                        if (object != null) curState.setLineCap(object.getIntValue());
+                        object = gs.get("LJ");
+                        if (object != null) curState.setLineJoin(object.getIntValue());
+                        object = gs.get("ML");
+                        if (object != null) curState.setLineWidth((float) object.getNumericValue());
+                        object = gs.get("D");
+                        if (object != null && object.getType() == PDFObject.OBJECT_TYPE.ARRAY_OBJECT) {
+                            ArrayList<PDFObject> arrayList = object.getArrayValueNoFail(pdfDocument);
+                            PDFObject dArray = arrayList.get(0);
+                            dPhase = arrayList.get(1).getIntValue();
+                            setDashPattern(dArray, dPhase);
+                        }
+                        object = gs.get("RI");
+                        if (object != null) setRenderingIntent(object.getStringValue());
+                        object = gs.get("CA");
+                        if (object != null) {
+                            //curState.setAlphaStroke((float) object.getNumericValue());
+                            float f = (float) object.getNumericValue();
+                            f *= curState.getAlphaStroke();
+                            curState.setAlphaStroke(f);
+                        }
+                        object = gs.get("ca");
+                        if (object != null) {
+                            //curState.setAlphaOthers((float) object.getNumericValue());
+                            float f = (float) object.getNumericValue();
+                            f *= curState.getAlphaOthers();
+                            curState.setAlphaOthers(f);
+                        }
+                        object = gs.get("AIS");
+                        if (object != null) curState.setAlphaIsShape(object.getBooleanValue());
+                        object = gs.get("BM");
+                        if (object != null) {
+                            if (object.getType() == PDFObject.OBJECT_TYPE.NAME_OBJECT) {
+                                String blendStr = object.getStringValue();
                                 BlendComposite.BlendingMode blendingMode = getBlendComposite(blendStr);
-                                if(blendingMode != null) {
-                                    curState.setBlendMode(blendingMode);
-                                    break;
+                                curState.setBlendMode(blendingMode);
+                            } else if (object.getType() == PDFObject.OBJECT_TYPE.ARRAY_OBJECT) {
+                                ArrayList<PDFObject> arrayList = object.getArrayValue();
+                                for (PDFObject pdfObject : arrayList) {
+                                    String blendStr = pdfObject.getStringValue();
+                                    BlendComposite.BlendingMode blendingMode = getBlendComposite(blendStr);
+                                    if (blendingMode != null) {
+                                        curState.setBlendMode(blendingMode);
+                                        break;
+                                    }
                                 }
-                                /*
-                                Composite composite = getBlendComposite(blendStr);
-                                if(composite != null) {
-                                    canvas.setComposite(composite);
-                                    curState.setBlendMode(composite);
-                                    break;
-                                }
-                                */
                             }
                         }
-                    }
                     /*
                      * SEE Table 144 – Entries in a soft-mask dictionary, page 347.
                      */
-                    object = gs.get("SMask");
-                    if(object != null) {
-                        if(object.getType() == PDFObject.OBJECT_TYPE.INDIRECT_REF_OBJECT) {
-                            PDFObjectStream smaskObjStr =
-                                    pdfDocument.reader.getObjectStreamById(object.getIdValue(),
-                                                                            pdfDocument);
-                            if(smaskObjStr == null) return;
-                            HashMap<String, PDFObject> smaskDict = smaskObjStr.dictionary;
-                            String type = PDFDict.getStringDictEntry(smaskDict, "Type");
-                            if(!type.isEmpty() && !type.equalsIgnoreCase("Mask")) return;
+                        object = gs.get("SMask");
+                        if (object != null) {
+                            if (object.getType() == PDFObject.OBJECT_TYPE.INDIRECT_REF_OBJECT) {
+                                PDFObjectStream smaskObjStr =
+                                        pdfDocument.reader.getObjectStreamById(object.getIdValue(),
+                                                pdfDocument);
+                                if (smaskObjStr == null) return;
+                                HashMap<String, PDFObject> smaskDict = smaskObjStr.dictionary;
+                                String type = PDFDict.getStringDictEntry(smaskDict, "Type");
+                                if (!type.isEmpty() && !type.equalsIgnoreCase("Mask")) return;
 
+                            }
                         }
                     }
+
                 }
 
-            }
-
-        } else if(operatorIndex == 8) {                         // q
-            pushGraphicsState();
-        } else if(operatorIndex == 9) {                         // Q
-            popGraphicsState();
-        } else if(operatorIndex == 10) {                        // cm
-            Double f = Double.parseDouble(operands.pop().toString());
-            Double e = Double.parseDouble(operands.pop().toString());
-            Double d = Double.parseDouble(operands.pop().toString());
-            Double c = Double.parseDouble(operands.pop().toString());
-            Double b = Double.parseDouble(operands.pop().toString());
-            Double a = Double.parseDouble(operands.pop().toString());
-            //AffineTransform newMatrix = new AffineTransform(a, c, b, d, e, f);
-            AffineTransform newMatrix = new AffineTransform(a, b, c, d, e, f);
-            AffineTransform CTM = curState.getCTM();
-            CTM.concatenate(newMatrix);
-            canvas.transform(newMatrix);
-        } else if(operatorIndex == 11) {                        // m
-            Double y = Double.parseDouble(operands.pop().toString());
-            Double x = Double.parseDouble(operands.pop().toString());
-            curPoint = new Point.Double(x, y);
-            if(curSubPath == null) curSubPath = new Path2D.Double();
-            curSubPath.moveTo(x, y);
-            curState.setCurState(GraphicsState.State.PATH_OBJECT);
-        } else if(operatorIndex == 12) {                        // l
-            if(curPoint == null) { return; }
-            if(curSubPath == null) createNewSubPath();
-            Double y = Double.parseDouble(operands.pop().toString());
-            Double x = Double.parseDouble(operands.pop().toString());
-            curSubPath.lineTo(x, y);
-            curPoint.setLocation(x, y);
-        } else if(operatorIndex == 13) {                        // c
-            if(curPoint == null) { return; }
-            if(curSubPath == null) createNewSubPath();
-            Double y3 = Double.parseDouble(operands.pop().toString());
-            Double x3 = Double.parseDouble(operands.pop().toString());
-            Double y2 = Double.parseDouble(operands.pop().toString());
-            Double x2 = Double.parseDouble(operands.pop().toString());
-            Double y1 = Double.parseDouble(operands.pop().toString());
-            Double x1 = Double.parseDouble(operands.pop().toString());
-            curSubPath.curveTo(x1, y1, x2, y2, x3, y3);
-            curPoint.setLocation(x3, y3);
-        } else if(operatorIndex == 14) {                        // v
-            if(curPoint == null) { return; }
-            if(curSubPath == null) createNewSubPath();
-            Double y3 = Double.parseDouble(operands.pop().toString());
-            Double x3 = Double.parseDouble(operands.pop().toString());
-            Double y2 = Double.parseDouble(operands.pop().toString());
-            Double x2 = Double.parseDouble(operands.pop().toString());
-            curSubPath.curveTo(curPoint.getX(), curPoint.getY(), x2, y2, x3, y3);
-            curPoint.setLocation(x3, y3);
-        } else if(operatorIndex == 15) {                        // y
-            if(curPoint == null) { return; }
-            if(curSubPath == null) createNewSubPath();
-            Double y3 = Double.parseDouble(operands.pop().toString());
-            Double x3 = Double.parseDouble(operands.pop().toString());
-            Double y1 = Double.parseDouble(operands.pop().toString());
-            Double x1 = Double.parseDouble(operands.pop().toString());
-            curSubPath.curveTo(x1, y1, x3, y3, x3, y3);
-            curPoint.setLocation(x3, y3);
-        } else if(operatorIndex == 16) {                        // h
-            closeCurSubPath();
-        } else if(operatorIndex == 17) {                        // re
-            Double h = Double.parseDouble(operands.pop().toString());
-            Double w = Double.parseDouble(operands.pop().toString());
-            Double y = Double.parseDouble(operands.pop().toString());
-            Double x = Double.parseDouble(operands.pop().toString());
-            // Java rect is (top,left,w,h) while PDF rect is (bottom,left,w,h).
-            // so we have to mirror y. OR NOT...
-            Rectangle2D rect;
-            if(h < 0) {
-                rect = new Rectangle2D.Double(x, y+h, w, -h);
-            } else {
-                rect = new Rectangle2D.Double(x, y, w, h);
-            }
-            curPath.append(rect, false);
-            curState.setCurState(GraphicsState.State.PATH_OBJECT);
-        } else if(operatorIndex == 18) {                        // S
-            strokeCurPath(true);
-        } else if(operatorIndex == 19) {                        // s
-            closeCurSubPath();
-            strokeCurPath(true);
-        } else if(operatorIndex == 20) {                        // f
-            closeCurSubPath();
-            fillCurPath(Path2D.WIND_NON_ZERO);
-        } else if(operatorIndex == 21) {                        // F
-            closeCurSubPath();
-            fillCurPath(Path2D.WIND_NON_ZERO);
-        } else if(operatorIndex == 22) {                        // f*
-            closeCurSubPath();
-            fillCurPath(Path2D.WIND_EVEN_ODD);
-        } else if(operatorIndex == 23) {                        // B
-            fillCurPath(Path2D.WIND_NON_ZERO);
-            strokeCurPath(true);
-        } else if(operatorIndex == 24) {                        // B*
-            fillCurPath(Path2D.WIND_EVEN_ODD);
-            strokeCurPath(true);
-        } else if(operatorIndex == 25) {                        // b
-            closeCurSubPath();
-            fillCurPath(Path2D.WIND_NON_ZERO);
-            strokeCurPath(true);
-        } else if(operatorIndex == 26) {                        // b*
-            closeCurSubPath();
-            fillCurPath(Path2D.WIND_EVEN_ODD);
-            strokeCurPath(true);
-        } else if(operatorIndex == 27) {                        // n
-            closeCurSubPath();
-            strokeCurPath(false);
-        } else if(operatorIndex == 28) {                        // W
-            curState.setDelayedClipping(true);
-            curState.setDelayedClippingMode(Path2D.WIND_NON_ZERO);
-            curState.setCurState(GraphicsState.State.CLIPPING_PATH_OBJECT);
-        } else if(operatorIndex == 29) {                        // W*
-            curState.setDelayedClipping(true);
-            curState.setDelayedClippingMode(Path2D.WIND_EVEN_ODD);
-            curState.setCurState(GraphicsState.State.CLIPPING_PATH_OBJECT);
-        } else if(operatorIndex == 30) {                        // BT
-            // Text objects cannot be nested
-            ASSERT_NOT_STATE(GraphicsState.State.TEXT_OBJECT);
-            // set the Tm and Tlm to identity matrices
-            TextState textState = curState.getTextState();
-            textState.setTm(new AffineTransform());
-            textState.setTlm(new AffineTransform());
-            curState.setCurState(GraphicsState.State.TEXT_OBJECT);
-            //curState.setCTM(new AffineTransform(canvas.getTransform()));
-            newTextObject = true;
-        } else if(operatorIndex == 31) {                        // ET
-            // discard the text matrix
-            TextState textState = curState.getTextState();
-            textState.setTm(null);
-            textState.setTlm(null);
-            curState.setCurState(GraphicsState.State.PAGE_DESCRIPTION_LEVEL);
-            //canvas.setTransform(curState.getCTM());
-            Tj = 0;
-        } else if(operatorIndex == 32) {                        // Tc
-            Float i = Float.parseFloat(operands.pop().toString());
-            curState.getTextState().setCharSpace(i);
-        } else if(operatorIndex == 33) {                        // Tw
-            Float i = Float.parseFloat(operands.pop().toString());
-            curState.getTextState().setWordSpace(i);
-        } else if(operatorIndex == 34) {                        // Tz
-            Float i = Float.parseFloat(operands.pop().toString());
-            curState.getTextState().setHorzScale(i/100);
-        } else if(operatorIndex == 35) {                        // TL
-            Float i = Float.parseFloat(operands.pop().toString());
-            curState.getTextState().setTextLeading(i);
-        } else if(operatorIndex == 36) {                        // Tf
-            Float i = Float.parseFloat(operands.pop().toString());
-            String n = operands.pop().toString();
-            curState.getTextState().setFontSize(i);
-            curState.getTextState().setFontName(n);
-        } else if(operatorIndex == 37) {                        // Tr
-            int i = Integer.parseInt(operands.pop().toString());
-            curState.getTextState().setRenderMode(i);
-        } else if(operatorIndex == 38) {                        // Ts
-            Float i = Float.parseFloat(operands.pop().toString());
-            curState.getTextState().setTextRise(i);
-        } else if(operatorIndex == 39) {                        // Td
-            ASSERT_STATE(GraphicsState.State.TEXT_OBJECT);
-            Float ty = Float.parseFloat(operands.pop().toString());
-            Float tx = Float.parseFloat(operands.pop().toString());
-            textMoveToNextLine(tx, ty);
-        } else if(operatorIndex == 40) {                        // TD
-            ASSERT_STATE(GraphicsState.State.TEXT_OBJECT);
-            Float ty = Float.parseFloat(operands.pop().toString());
-            Float tx = Float.parseFloat(operands.pop().toString());
-            curState.getTextState().setTextLeading(-ty);
-            textMoveToNextLine(tx, ty);
-        } else if(operatorIndex == 41) {                        // Tm
-            ASSERT_STATE(GraphicsState.State.TEXT_OBJECT);
-            Double f = Double.parseDouble(operands.pop().toString());
-            Double e = Double.parseDouble(operands.pop().toString());
-            Double d = Double.parseDouble(operands.pop().toString());
-            Double c = Double.parseDouble(operands.pop().toString());
-            Double b = Double.parseDouble(operands.pop().toString());
-            Double a = Double.parseDouble(operands.pop().toString());
-            AffineTransform Tlm = new AffineTransform(a, b, c, d, e, f);
-            //System.out.println("a: " + a + ",b: " + b + ",c: " + c + ",d:" + d + ",e:" + e + ",f: " + f);
-            //System.out.println("Tlm = " + Tlm.toString());
-            TextState textState = curState.getTextState();
-            textState.setTlm(Tlm);
-            textState.setTm(new AffineTransform(Tlm));
-            //canvas.setTransform(curState.getCTM());
-            //canvas.transform(curState.getTextState().getTm());
-        } else if(operatorIndex == 42) {                        // T*
-            ASSERT_STATE(GraphicsState.State.TEXT_OBJECT);
-            textMoveToNextLine(0, -curState.getTextState().getTextLeading());
-        } else if(operatorIndex == 43) {                        // Tj
-            ASSERT_STATE(GraphicsState.State.TEXT_OBJECT);
-            AffineTransform CTM = curState.getCTM();    // canvas.getTransform();
-            canvas.setTransform(CTM);
-            /*
-            if(newTextObject) {
+                break;
+            case (8):                         // q
+                pushGraphicsState();
+                break;
+            case (9):                         // Q
+                popGraphicsState();
+                break;
+            case (10):                        // cm
+                Double f = Double.parseDouble(operands.pop().toString());
+                Double e = Double.parseDouble(operands.pop().toString());
+                Double d = Double.parseDouble(operands.pop().toString());
+                Double c = Double.parseDouble(operands.pop().toString());
+                Double b = Double.parseDouble(operands.pop().toString());
+                Double a = Double.parseDouble(operands.pop().toString());
+                AffineTransform newMatrix = new AffineTransform(a, b, c, d, e, f);
+                AffineTransform CTM = curState.getCTM();
+                CTM.concatenate(newMatrix);
+                canvas.transform(newMatrix);
+                break;
+            case (11):                        // m
+                Double y = Double.parseDouble(operands.pop().toString());
+                Double x = Double.parseDouble(operands.pop().toString());
+                curPoint = new Point.Double(x, y);
+                if (curSubPath == null) curSubPath = new Path2D.Double();
+                curSubPath.moveTo(x, y);
+                curState.setCurState(GraphicsState.State.PATH_OBJECT);
+                break;
+            case (12):                        // l
+                if (curPoint == null) {
+                    return;
+                }
+                if (curSubPath == null) createNewSubPath();
+                y = Double.parseDouble(operands.pop().toString());
+                x = Double.parseDouble(operands.pop().toString());
+                curSubPath.lineTo(x, y);
+                curPoint.setLocation(x, y);
+                break;
+            case (13):                        // c
+                if (curPoint == null) {
+                    return;
+                }
+                if (curSubPath == null) createNewSubPath();
+                Double y3 = Double.parseDouble(operands.pop().toString());
+                Double x3 = Double.parseDouble(operands.pop().toString());
+                Double y2 = Double.parseDouble(operands.pop().toString());
+                Double x2 = Double.parseDouble(operands.pop().toString());
+                Double y1 = Double.parseDouble(operands.pop().toString());
+                Double x1 = Double.parseDouble(operands.pop().toString());
+                curSubPath.curveTo(x1, y1, x2, y2, x3, y3);
+                curPoint.setLocation(x3, y3);
+                break;
+            case (14):                        // v
+                if (curPoint == null) {
+                    return;
+                }
+                if (curSubPath == null) createNewSubPath();
+                y3 = Double.parseDouble(operands.pop().toString());
+                x3 = Double.parseDouble(operands.pop().toString());
+                y2 = Double.parseDouble(operands.pop().toString());
+                x2 = Double.parseDouble(operands.pop().toString());
+                curSubPath.curveTo(curPoint.getX(), curPoint.getY(), x2, y2, x3, y3);
+                curPoint.setLocation(x3, y3);
+                break;
+            case (15):                        // y
+                if (curPoint == null) {
+                    return;
+                }
+                if (curSubPath == null) createNewSubPath();
+                y3 = Double.parseDouble(operands.pop().toString());
+                x3 = Double.parseDouble(operands.pop().toString());
+                y1 = Double.parseDouble(operands.pop().toString());
+                x1 = Double.parseDouble(operands.pop().toString());
+                curSubPath.curveTo(x1, y1, x3, y3, x3, y3);
+                curPoint.setLocation(x3, y3);
+                break;
+            case (16):                        // h
+                closeCurSubPath();
+                break;
+            case (17):                        // re
+                Double h = Double.parseDouble(operands.pop().toString());
+                Double w = Double.parseDouble(operands.pop().toString());
+                y = Double.parseDouble(operands.pop().toString());
+                x = Double.parseDouble(operands.pop().toString());
+                // Java rect is (top,left,w,h) while PDF rect is (bottom,left,w,h).
+                // so we have to mirror y. OR NOT...
+                Rectangle2D rect;
+                if (h < 0) {
+                    rect = new Rectangle2D.Double(x, y + h, w, -h);
+                } else {
+                    rect = new Rectangle2D.Double(x, y, w, h);
+                }
+                curPath.append(rect, false);
+                curState.setCurState(GraphicsState.State.PATH_OBJECT);
+                break;
+            case (18):                        // S
+                strokeCurPath(true);
+                break;
+            case (19):                        // s
+                closeCurSubPath();
+                strokeCurPath(true);
+                break;
+            case (20):                        // f
+                closeCurSubPath();
+                fillCurPath(Path2D.WIND_NON_ZERO);
+                break;
+            case (21):                        // F
+                closeCurSubPath();
+                fillCurPath(Path2D.WIND_NON_ZERO);
+                break;
+            case (22):                        // f*
+                closeCurSubPath();
+                fillCurPath(Path2D.WIND_EVEN_ODD);
+                break;
+            case (23):                        // B
+                fillCurPath(Path2D.WIND_NON_ZERO);
+                strokeCurPath(true);
+                break;
+            case (24):                        // B*
+                fillCurPath(Path2D.WIND_EVEN_ODD);
+                strokeCurPath(true);
+                break;
+            case (25):                        // b
+                closeCurSubPath();
+                fillCurPath(Path2D.WIND_NON_ZERO);
+                strokeCurPath(true);
+                break;
+            case (26):                        // b*
+                closeCurSubPath();
+                fillCurPath(Path2D.WIND_EVEN_ODD);
+                strokeCurPath(true);
+                break;
+            case (27):                        // n
+                closeCurSubPath();
+                strokeCurPath(false);
+                break;
+            case (28):                        // W
+                curState.setDelayedClipping(true);
+                curState.setDelayedClippingMode(Path2D.WIND_NON_ZERO);
+                curState.setCurState(GraphicsState.State.CLIPPING_PATH_OBJECT);
+                break;
+            case (29):                        // W*
+                curState.setDelayedClipping(true);
+                curState.setDelayedClippingMode(Path2D.WIND_EVEN_ODD);
+                curState.setCurState(GraphicsState.State.CLIPPING_PATH_OBJECT);
+                break;
+            case (30):                        // BT
+                // Text objects cannot be nested
+                ASSERT_NOT_STATE(GraphicsState.State.TEXT_OBJECT);
+                // set the Tm and Tlm to identity matrices
+                TextState textState = curState.getTextState();
+                textState.setTm(new AffineTransform());
+                textState.setTlm(new AffineTransform());
+                curState.setCurState(GraphicsState.State.TEXT_OBJECT);
+                //curState.setCTM(new AffineTransform(canvas.getTransform()));
+                break;
+            case (31):                        // ET
+                // discard the text matrix
+                textState = curState.getTextState();
+                textState.setTm(null);
+                textState.setTlm(null);
+                curState.setCurState(GraphicsState.State.PAGE_DESCRIPTION_LEVEL);
+                //canvas.setTransform(curState.getCTM());
+                Tj = 0;
+                break;
+            case (32):                        // Tc
+                f2 = Float.parseFloat(operands.pop().toString());
+                curState.getTextState().setCharSpace(f2);
+                break;
+            case (33):                        // Tw
+                f2 = Float.parseFloat(operands.pop().toString());
+                curState.getTextState().setWordSpace(f2);
+                break;
+            case (34):                        // Tz
+                f2 = Float.parseFloat(operands.pop().toString());
+                curState.getTextState().setHorzScale(f2 / 100);
+                break;
+            case (35):                        // TL
+                f2 = Float.parseFloat(operands.pop().toString());
+                curState.getTextState().setTextLeading(f2);
+                break;
+            case (36):                        // Tf
+                f2 = Float.parseFloat(operands.pop().toString());
+                String n = operands.pop().toString();
+                curState.getTextState().setFontSize(f2);
+                curState.getTextState().setFontName(n);
+                break;
+            case (37):                        // Tr
+                i = Integer.parseInt(operands.pop().toString());
+                curState.getTextState().setRenderMode(i);
+                break;
+            case (38):                        // Ts
+                f2 = Float.parseFloat(operands.pop().toString());
+                curState.getTextState().setTextRise(f2);
+                break;
+            case (39):                        // Td
+                ASSERT_STATE(GraphicsState.State.TEXT_OBJECT);
+                Float ty = Float.parseFloat(operands.pop().toString());
+                Float tx = Float.parseFloat(operands.pop().toString());
+                textMoveToNextLine(tx, ty);
+                break;
+            case (40):                        // TD
+                ASSERT_STATE(GraphicsState.State.TEXT_OBJECT);
+                ty = Float.parseFloat(operands.pop().toString());
+                tx = Float.parseFloat(operands.pop().toString());
+                curState.getTextState().setTextLeading(-ty);
+                textMoveToNextLine(tx, ty);
+                break;
+            case (41):                        // Tm
+                ASSERT_STATE(GraphicsState.State.TEXT_OBJECT);
+                f = Double.parseDouble(operands.pop().toString());
+                e = Double.parseDouble(operands.pop().toString());
+                d = Double.parseDouble(operands.pop().toString());
+                c = Double.parseDouble(operands.pop().toString());
+                b = Double.parseDouble(operands.pop().toString());
+                a = Double.parseDouble(operands.pop().toString());
+                AffineTransform Tlm = new AffineTransform(a, b, c, d, e, f);
+                textState = curState.getTextState();
+                textState.setTlm(Tlm);
+                textState.setTm(new AffineTransform(Tlm));
+                break;
+            case (42):                        // T*
+                ASSERT_STATE(GraphicsState.State.TEXT_OBJECT);
+                textMoveToNextLine(0, -curState.getTextState().getTextLeading());
+                break;
+            case (43):                        // Tj
+                ASSERT_STATE(GraphicsState.State.TEXT_OBJECT);
+                CTM = curState.getCTM();    // canvas.getTransform();
                 canvas.setTransform(CTM);
-                newTextObject = false;
-            }
-            */
-            //canvas.transform(curState.getTextState().getTm());
-            PDFObject object = (PDFObject) operands.pop();
-            byte[] bytes = object.getBytes();
-            if(bytes != null) textShow(bytes, Tj);
-            else textShow(object.getStringValue().getBytes(), Tj);
-            canvas.setTransform(CTM);
-        } else if(operatorIndex == 44) {                        // TJ
+                //canvas.transform(curState.getTextState().getTm());
+                PDFObject object = (PDFObject) operands.pop();
+                byte[] bytes = object.getBytes();
+                if (bytes != null) textShow(bytes, Tj);
+                else textShow(object.getStringValue().getBytes(), Tj);
+                canvas.setTransform(CTM);
+                break;
+            case (44):                        // TJ
             /*
              * SEE Table 109 – Text-showing operators, page 251.
              */
-            ASSERT_STATE(GraphicsState.State.TEXT_OBJECT);
-            PDFObject array = (PDFObject) operands.pop();
-            AffineTransform CTM = curState.getCTM();    // canvas.getTransform();
-            canvas.setTransform(CTM);
-            /*
-            if(newTextObject) {
+                ASSERT_STATE(GraphicsState.State.TEXT_OBJECT);
+                PDFObject array = (PDFObject) operands.pop();
+                CTM = curState.getCTM();    // canvas.getTransform();
                 canvas.setTransform(CTM);
-                newTextObject = false;
-            }
-            */
-            //canvas.transform(curState.getTextState().getTm());
-            ArrayList<PDFObject> arrayList = array.getArrayValue();
-            int len = arrayList.size();
-            for(int j = 0; j < len; j++) {
-                PDFObject object = arrayList.get(j);
-                if(object.getType() == PDFObject.OBJECT_TYPE.STRING_OBJECT) {
-                    PDFObject object1;
-                    if(j+1 < len) {
-                        object1 = arrayList.get(j+1);
-                        if(object1.getType() == PDFObject.OBJECT_TYPE.INTEGER_OBJECT ||
-                                object1.getType() == PDFObject.OBJECT_TYPE.REAL_OBJECT) {
-                            Tj = (float) object1.getNumericValue();
-                            j++;
+                //canvas.transform(curState.getTextState().getTm());
+                ArrayList<PDFObject> arrayList = array.getArrayValue();
+                int len = arrayList.size();
+                for (int j = 0; j < len; j++) {
+                    object = arrayList.get(j);
+                    if (object.getType() == PDFObject.OBJECT_TYPE.STRING_OBJECT) {
+                        PDFObject object1;
+                        if (j + 1 < len) {
+                            object1 = arrayList.get(j + 1);
+                            if (object1.getType() == PDFObject.OBJECT_TYPE.INTEGER_OBJECT ||
+                                    object1.getType() == PDFObject.OBJECT_TYPE.REAL_OBJECT) {
+                                Tj = (float) object1.getNumericValue();
+                                j++;
+                            }
                         }
+                        bytes = object.getBytes();
+                        if (bytes != null) textShow(bytes, Tj);
+                        else textShow(object.getStringValue().getBytes(), Tj);
+                        Tj = 0;
                     }
-                    byte[] bytes = object.getBytes();
-                    if(bytes != null) textShow(bytes, Tj);
-                    else textShow(object.getStringValue().getBytes(), Tj);
-                    Tj = 0;
                 }
-            }
-            canvas.setTransform(CTM);
-        } else if(operatorIndex == 45) {                        // '
-            ASSERT_STATE(GraphicsState.State.TEXT_OBJECT);
-
-            AffineTransform CTM = canvas.getTransform(); // curState.getCTM();
-
-            textMoveToNextLine(0, -curState.getTextState().getTextLeading());
-
-            canvas.transform(curState.getTextState().getTm());
-
-            PDFObject object = (PDFObject) operands.pop();
-            byte[] bytes = object.getBytes();
-            if(bytes != null) textShow(bytes, Tj);
-            else textShow(object.getStringValue().getBytes(), Tj);
-
-            canvas.setTransform(CTM);
-
-        } else if(operatorIndex == 46) {                        // "
-            ASSERT_STATE(GraphicsState.State.TEXT_OBJECT);
-            //String str = operands.pop().toString();
-            PDFObject object = (PDFObject) operands.pop();
-            Float ac = Float.parseFloat(operands.pop().toString());
-            Float aw = Float.parseFloat(operands.pop().toString());
-
-            AffineTransform CTM = canvas.getTransform(); // curState.getCTM();
-
-            curState.getTextState().setCharSpace(ac);
-            curState.getTextState().setWordSpace(aw);
-
-            canvas.transform(curState.getTextState().getTm());
-
-            textMoveToNextLine(0, -curState.getTextState().getTextLeading());
-            //textShow(str, Tj);
-            byte[] bytes = object.getBytes();
-            if(bytes != null) textShow(bytes, Tj);
-            else textShow(object.getStringValue().getBytes(), Tj);
-
-            canvas.setTransform(CTM);
-
-        } else if(operatorIndex == 47) {                        // d0
+                canvas.setTransform(CTM);
+                break;
+            case (45):                        // '
+                ASSERT_STATE(GraphicsState.State.TEXT_OBJECT);
+                CTM = curState.getCTM();    // canvas.getTransform();
+                canvas.setTransform(CTM);
+                textMoveToNextLine(0, -curState.getTextState().getTextLeading());
+                //canvas.transform(curState.getTextState().getTm());
+                object = (PDFObject) operands.pop();
+                bytes = object.getBytes();
+                if (bytes != null) textShow(bytes, Tj);
+                else textShow(object.getStringValue().getBytes(), Tj);
+                canvas.setTransform(CTM);
+                break;
+            case (46):                        // "
+                ASSERT_STATE(GraphicsState.State.TEXT_OBJECT);
+                //String str = operands.pop().toString();
+                object = (PDFObject) operands.pop();
+                Float ac = Float.parseFloat(operands.pop().toString());
+                Float aw = Float.parseFloat(operands.pop().toString());
+                CTM = curState.getCTM();    // canvas.getTransform();
+                canvas.setTransform(CTM);
+                curState.getTextState().setCharSpace(ac);
+                curState.getTextState().setWordSpace(aw);
+                //canvas.transform(curState.getTextState().getTm());
+                textMoveToNextLine(0, -curState.getTextState().getTextLeading());
+                bytes = object.getBytes();
+                if (bytes != null) textShow(bytes, Tj);
+                else textShow(object.getStringValue().getBytes(), Tj);
+                canvas.setTransform(CTM);
+                break;
+            case (47):                        // d0
             /*
              * TODO:
              */
-        } else if(operatorIndex == 48) {                        // d1
+                break;
+            case (48):                        // d1
             /*
              * TODO:
              */
-        } else if(operatorIndex == 49) {                        // CS
-            setColorSpace(null, operands, true, true);
-        } else if(operatorIndex == 50) {                        // cs
-            setColorSpace(null, operands, false, true);
-        } else if(operatorIndex == 51) {                        // SC
-            Color c = getColor(curState.getCurColorSpaceStroke(), operands);
-            curState.setCurColorStroke(c);
-        } else if(operatorIndex == 52) {                        // SCN
-            Color c = getColor(curState.getCurColorSpaceStroke(), operands);
-            curState.setCurColorStroke(c);
-        } else if(operatorIndex == 53) {                        // sc
-            Color c = getColor(curState.getCurColorSpaceOthers(), operands);
-            curState.setCurColorOthers(c);
-        } else if(operatorIndex == 54) {                        // scn
-            Color c = getColor(curState.getCurColorSpaceOthers(), operands);
-            curState.setCurColorOthers(c);
-        } else if(operatorIndex == 55) {                        // G
-            setColorSpace("DeviceGray", null, true, false);
-            Color c = getColor(curState.getCurColorSpaceStroke(), operands);
-            curState.setCurColorStroke(c);
-        } else if(operatorIndex == 56) {                        // g
-            setColorSpace("DeviceGray", null, false, false);
-            Color c = getColor(curState.getCurColorSpaceOthers(), operands);
-            curState.setCurColorOthers(c);
-        } else if(operatorIndex == 57) {                        // RG
-            setColorSpace("DeviceRGB", null, true, false);
-            Color c = getColor(curState.getCurColorSpaceStroke(), operands);
-            curState.setCurColorStroke(c);
-        } else if(operatorIndex == 58) {                        // rg
-            setColorSpace("DeviceRGB", null, false, false);
-            Color c = getColor(curState.getCurColorSpaceOthers(), operands);
-            curState.setCurColorOthers(c);
-        } else if(operatorIndex == 59) {                        // K
-            setColorSpace("DeviceCMYK", null, true, false);
-            Color c = getColor(curState.getCurColorSpaceStroke(), operands);
-            curState.setCurColorStroke(c);
-        } else if(operatorIndex == 60) {                        // k
-            setColorSpace("DeviceCMYK", null, false, false);
-            Color c = getColor(curState.getCurColorSpaceOthers(), operands);
-            curState.setCurColorOthers(c);
-        } else if(operatorIndex == 65) {                        // Do
+                break;
+            case (49):                        // CS
+                setColorSpace(null, operands, true, true);
+                break;
+            case (50):                        // cs
+                setColorSpace(null, operands, false, true);
+                break;
+            case (51):                        // SC
+                Color color = getColor(curState.getCurColorSpaceStroke(), operands);
+                curState.setCurColorStroke(color);
+                break;
+            case (52):                        // SCN
+                color = getColor(curState.getCurColorSpaceStroke(), operands);
+                curState.setCurColorStroke(color);
+                break;
+            case (53):                        // sc
+                color = getColor(curState.getCurColorSpaceOthers(), operands);
+                curState.setCurColorOthers(color);
+                break;
+            case (54):                        // scn
+                color = getColor(curState.getCurColorSpaceOthers(), operands);
+                curState.setCurColorOthers(color);
+                break;
+            case (55):                        // G
+                setColorSpace("DeviceGray", null, true, false);
+                color = getColor(curState.getCurColorSpaceStroke(), operands);
+                curState.setCurColorStroke(color);
+                break;
+            case (56):                        // g
+                setColorSpace("DeviceGray", null, false, false);
+                color = getColor(curState.getCurColorSpaceOthers(), operands);
+                curState.setCurColorOthers(color);
+                break;
+            case (57):                        // RG
+                setColorSpace("DeviceRGB", null, true, false);
+                color = getColor(curState.getCurColorSpaceStroke(), operands);
+                curState.setCurColorStroke(color);
+                break;
+            case (58):                        // rg
+                setColorSpace("DeviceRGB", null, false, false);
+                color = getColor(curState.getCurColorSpaceOthers(), operands);
+                curState.setCurColorOthers(color);
+                break;
+            case (59):                        // K
+                setColorSpace("DeviceCMYK", null, true, false);
+                color = getColor(curState.getCurColorSpaceStroke(), operands);
+                curState.setCurColorStroke(color);
+                break;
+            case (60):                        // k
+                setColorSpace("DeviceCMYK", null, false, false);
+                color = getColor(curState.getCurColorSpaceOthers(), operands);
+                curState.setCurColorOthers(color);
+                break;
+            case (61):                        // sh
+                String shadeName = operands.pop().toString();
+                PDFShading shading = new PDFShading(pdfDocument);
+                if(shading.setShading(shadeName, Resources, this)) {
+                    shading.applyShading(this);
+                } else {
+                    PDFReader.__DEBUG__("doOperation", "Failed to apply 'sh' operator");
+                }
+                break;
+            case (62):                        // BI
+                throw new UnsupportedOperationException("Unimplemented Operator: 'BI'");
+            case (63):                        // ID
+                throw new UnsupportedOperationException("Unimplemented Operator: 'ID'");
+            case (64):                        // EI
+                throw new UnsupportedOperationException("Unimplemented Operator: 'EI'");
+            case (65):                        // Do
             /*
              * SEE Table 87 – XObject Operator, page 202.
-             * PDF Std says:
-             * =============
-             * Paint the specified XObject. The operand name shall appear as a key in the XObject
-             * subdictionary  of  the  current  resource  dictionary  (see 7.8.3, "Resource
-             * Dictionaries"). The associated value shall be a stream whose Type entry, if present,
-             * is XObject. The effect of Do depends on the value of the XObject’s Subtype entry, which
-             * may be Image (see 8.9.5, "Image Dictionaries"), Form  (see 8.10,  "Form  XObjects"),
-             * or PS (see 8.8.2, "PostScript XObjects").
              */
-            curState.setCurState(GraphicsState.State.EXTERNAL_OBJECT);
-            HashMap<String, PDFObject> xObjects = PDFDict.getDictionaryDictEntry(Resources, "XObject");
-            if(xObjects != null) {
-                String x = operands.pop().toString();
-                ObjectId objectId = PDFDict.getIndirectRefDictEntry(xObjects, x);
-                PDFXObject xo = new PDFXObject(pdfDocument, Resources, this);
-                xo.parse(objectId);
-            }
-            curState.setCurState(GraphicsState.State.PAGE_DESCRIPTION_LEVEL);
+                curState.setCurState(GraphicsState.State.EXTERNAL_OBJECT);
+                HashMap<String, PDFObject> xObjects = PDFDict.getDictionaryDictEntry(Resources, "XObject");
+                if (xObjects != null) {
+                    String xs = operands.pop().toString();
+                    ObjectId objectId = PDFDict.getIndirectRefDictEntry(xObjects, xs);
+                    PDFXObject xo = new PDFXObject(pdfDocument, Resources, this);
+                    xo.parse(objectId);
+                }
+                curState.setCurState(GraphicsState.State.PAGE_DESCRIPTION_LEVEL);
+                break;
+            case (66):                        // MP
+                // TODO: handle marked content points
+                break;
+            case (67):                        // DP
+                // TODO: handle marked content points
+                break;
+            case (68):                        // BMC
+                // TODO: handle marked content sequences
+                break;
+            case (69):                        // BDC
+                // TODO: handle marked content sequences
+                break;
+            case (70):                        // EMC
+                // TODO: handle marked content sequences
+                break;
+            case (71):                        // BX
+                break;
+            case (72):                        // EX
+                break;
         }
     }
 
@@ -626,7 +682,6 @@ public class PDFDraw {
         }
     }
 
-    //static int fffi = 0;
 
     private void textShow(byte[] bytes, float Tj) {
         // get the CTM
@@ -717,11 +772,14 @@ public class PDFDraw {
         int count = cs.getColorComponents();
         float[] f = new float[count];
         if(cs.getFamily() == PDFColorSpace.Pattern) {
-            String patternName = operands.pop().toString();
-
             /*
-             * TODO: implement pattern CS.
+             * TODO: fully implement pattern CS.
              */
+            String patternName = operands.pop().toString();
+            for(int i = count-1; i >= 0; i--) {
+                f[i] = Float.parseFloat(operands.pop().toString());
+            }
+            curPattern = cs.getPattern(patternName, f, this);
             return PDFColorSpace.BLACK_RGB;
         }
 
@@ -767,12 +825,19 @@ public class PDFDraw {
     private void fillCurPath(int windingRule) {
         //closeCurSubPath();
         updateCanvasPaintColor();
+        AffineTransform CTM = canvas.getTransform();
+
+        PDFColorSpace cs = curState.getCurColorSpaceOthers();
+        if(cs.getFamily() == PDFColorSpace.Pattern) canvas.transform(curPattern.getMatrix());
+
         curPath.setWindingRule(windingRule);
         canvas.fill(curPath);
         curPath.reset();
         curPoint = null;
         curSubPath = null;
         curState.setCurState(GraphicsState.State.PAGE_DESCRIPTION_LEVEL);
+
+        if(cs.getFamily() == PDFColorSpace.Pattern) canvas.setTransform(CTM);
     }
 
     private void strokeCurPath(boolean doDraw) {
@@ -798,9 +863,14 @@ public class PDFDraw {
         /*
          * This assumes solid color, no gradient or pattern.
          */
-        canvas.setPaint(curState.getCurColorOthers());
+        PDFColorSpace cs = curState.getCurColorSpaceOthers();
+        if(cs.getFamily() == PDFColorSpace.Pattern) {
+            curPattern.applyPattern(this);
+        } else {
+            canvas.setPaint(curState.getCurColorOthers());
+        }
         BlendComposite.BlendingMode blendingMode = curState.getBlendMode();
-        if(blendingMode == null) canvas.setComposite(AlphaComposite.Src.derive(curState.getAlphaOthers()));
+        if(blendingMode == null) canvas.setComposite(AlphaComposite.SrcOver.derive(curState.getAlphaOthers()));
         else {
             BlendComposite blendComposite = BlendComposite.getInstance(blendingMode, curState.getAlphaOthers());
             canvas.setComposite(blendComposite);
@@ -823,7 +893,7 @@ public class PDFDraw {
          */
         canvas.setColor(curState.getCurColorStroke());
         BlendComposite.BlendingMode blendingMode = curState.getBlendMode();
-        if(blendingMode == null) canvas.setComposite(AlphaComposite.Src.derive(curState.getAlphaStroke()));
+        if(blendingMode == null) canvas.setComposite(AlphaComposite.SrcOver.derive(curState.getAlphaStroke()));
         else {
             BlendComposite blendComposite = BlendComposite.getInstance(blendingMode, curState.getAlphaStroke());
             canvas.setComposite(blendComposite);
@@ -868,12 +938,7 @@ public class PDFDraw {
         curState.setDelayedClipping(false);
         canvas.clip(clipPath);
 
-        /*
-         * TODO: init color spaces, colors, text states, dash pattern, blend mode, soft mask, alpha.
-         */
-
-        Composite composite = AlphaComposite.Src;
-        //curState.setBlendMode(composite);
+        Composite composite = AlphaComposite.SrcOver;
         curState.setBlendMode(null);
         canvas.setComposite(composite);
 
@@ -924,8 +989,7 @@ public class PDFDraw {
     }
 
     BlendComposite.BlendingMode getBlendComposite(String blendStr) {
-        BlendComposite.BlendingMode blend = null;
-        Composite composite;
+        BlendComposite.BlendingMode blend;
 
         if(blendStr.equalsIgnoreCase("Normal") ||
                 blendStr.equalsIgnoreCase("Compatible"))
@@ -961,13 +1025,6 @@ public class PDFDraw {
         else if(blendStr.equalsIgnoreCase("Luminosity"))
             blend = BlendComposite.BlendingMode.LUMINOSITY;
         else return null;
-
-        /*
-        if(blend == null)
-            composite = AlphaComposite.Src;
-        else
-            composite = BlendComposite.getInstance(blend);
-        */
 
         return blend;
     }

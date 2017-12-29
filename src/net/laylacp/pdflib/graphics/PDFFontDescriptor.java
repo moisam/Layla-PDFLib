@@ -25,7 +25,7 @@ import net.laylacp.pdflib.core.PDFObjectStream;
 
 import java.awt.font.TextAttribute;
 
-public class PDFFontDescriptor {
+public class PDFFontDescriptor implements Cloneable {
     /*
      * SEE Table 122 – Entries common to all font descriptors, page 281.
      */
@@ -53,15 +53,15 @@ public class PDFFontDescriptor {
     /*
      * values for the 'flags' field (SEE Table 123 – Font flags).
      */
-    public static final int FLAG_FIXEDPITCH  = (1 << 0 );
-    public static final int FLAG_SERIF       = (1 << 1 );
-    public static final int FLAG_SYMBOLIC    = (1 << 2 );
-    public static final int FLAG_SCRIPT      = (1 << 3 );
-    public static final int FLAG_NONSYMBOLIC = (1 << 5 );
-    public static final int FLAG_ITALIC      = (1 << 6 );
-    public static final int FLAG_ALLCAP      = (1 << 16);
-    public static final int FLAG_SMALLCAP    = (1 << 17);
-    public static final int FLAG_FORCEBOLD   = (1 << 18);
+    public static final int FLAG_FIXEDPITCH = (1 << 0);
+    public static final int FLAG_SERIF = (1 << 1);
+    public static final int FLAG_SYMBOLIC = (1 << 2);
+    public static final int FLAG_SCRIPT = (1 << 3);
+    public static final int FLAG_NONSYMBOLIC = (1 << 5);
+    public static final int FLAG_ITALIC = (1 << 6);
+    public static final int FLAG_ALLCAP = (1 << 16);
+    public static final int FLAG_SMALLCAP = (1 << 17);
+    public static final int FLAG_FORCEBOLD = (1 << 18);
 
 
     public PDFFontDescriptor() {
@@ -88,5 +88,34 @@ public class PDFFontDescriptor {
 
     public boolean isFlagSet(int flag) {
         return (flags & flag) == flag;
+    }
+
+    @Override
+    public Object clone() throws CloneNotSupportedException {
+        Object obj = super.clone(); //utilize clone Object method
+        PDFFontDescriptor pdfFontDescriptor = (PDFFontDescriptor) obj;
+
+        pdfFontDescriptor.italicAngle = this.italicAngle;
+        pdfFontDescriptor.ascent = this.ascent;
+        pdfFontDescriptor.descent = this.descent;
+        pdfFontDescriptor.leading = this.leading;
+        pdfFontDescriptor.capHeight = this.capHeight;
+        pdfFontDescriptor.xHeight = this.xHeight;
+        pdfFontDescriptor.stemH = this.stemH;
+        pdfFontDescriptor.stemV = this.stemV;
+        pdfFontDescriptor.flags = this.flags;
+        pdfFontDescriptor.fontBBox = this.fontBBox;
+        pdfFontDescriptor.fontWeight = this.fontWeight;
+        pdfFontDescriptor.fontStretch = this.fontStretch;
+        pdfFontDescriptor.fontFamily = this.fontFamily;
+        pdfFontDescriptor.fontName = this.fontName;
+        pdfFontDescriptor.avgWidth = this.avgWidth;
+        pdfFontDescriptor.maxWidth = this.maxWidth;
+        pdfFontDescriptor.missingWidth = this.missingWidth;
+        pdfFontDescriptor.charSet = this.charSet;
+        pdfFontDescriptor.fontFile = this.fontFile;
+        pdfFontDescriptor.fontFileFormat = this.fontFileFormat;
+
+        return pdfFontDescriptor;
     }
 }

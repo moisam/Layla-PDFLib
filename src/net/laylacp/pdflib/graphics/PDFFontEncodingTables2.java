@@ -701,8 +701,11 @@ public class PDFFontEncodingTables2 {
     };
 
 
+    private static HashMap<String, String> glyphList = null;
+
     public static HashMap<String, String> getAdobeGlyphList() {
-      HashMap<String, String> glyphList = new HashMap<>();
+      if(glyphList != null) return glyphList;
+      glyphList = new HashMap<>();
 
       /*
        * based on https://raw.githubusercontent.com/adobe-type-tools/agl-aglfn/master/glyphlist.txt.
@@ -3859,31 +3862,27 @@ public class PDFFontEncodingTables2 {
       glyphList.put("qof", "\u05E7");
       glyphList.put("qofdagesh", "\uFB47");
       glyphList.put("qofdageshhebrew", "\uFB47");
-      /*
-      glyphList.put("qofhatafpatah", "\u05E7 05B2");
-      glyphList.put("qofhatafpatahhebrew", "\u05E7 05B2");
-      glyphList.put("qofhatafsegol", "\u05E7 05B1");
-      glyphList.put("qofhatafsegolhebrew", "\u05E7 05B1");
-      */
+      glyphList.put("qofhatafpatah", "\u05E7\u05B2");
+      glyphList.put("qofhatafpatahhebrew", "\u05E7\u05B2");
+      glyphList.put("qofhatafsegol", "\u05E7\u05B1");
+      glyphList.put("qofhatafsegolhebrew", "\u05E7\u05B1");
       glyphList.put("qofhebrew", "\u05E7");
-      /*
-      glyphList.put("qofhiriq", "\u05E7 05B4");
-      glyphList.put("qofhiriqhebrew", "\u05E7 05B4");
-      glyphList.put("qofholam", "\u05E7 05B9");
-      glyphList.put("qofholamhebrew", "\u05E7 05B9");
-      glyphList.put("qofpatah", "\u05E7 05B7");
-      glyphList.put("qofpatahhebrew", "\u05E7 05B7");
-      glyphList.put("qofqamats", "\u05E7 05B8");
-      glyphList.put("qofqamatshebrew", "\u05E7 05B8");
-      glyphList.put("qofqubuts", "\u05E7 05BB");
-      glyphList.put("qofqubutshebrew", "\u05E7 05BB");
-      glyphList.put("qofsegol", "\u05E7 05B6");
-      glyphList.put("qofsegolhebrew", "\u05E7 05B6");
-      glyphList.put("qofsheva", "\u05E7 05B0");
-      glyphList.put("qofshevahebrew", "\u05E7 05B0");
-      glyphList.put("qoftsere", "\u05E7 05B5");
-      glyphList.put("qoftserehebrew", "\u05E7 05B5");
-      */
+      glyphList.put("qofhiriq", "\u05E7\u05B4");
+      glyphList.put("qofhiriqhebrew", "\u05E7\u05B4");
+      glyphList.put("qofholam", "\u05E7\u05B9");
+      glyphList.put("qofholamhebrew", "\u05E7\u05B9");
+      glyphList.put("qofpatah", "\u05E7\u05B7");
+      glyphList.put("qofpatahhebrew", "\u05E7\u05B7");
+      glyphList.put("qofqamats", "\u05E7\u05B8");
+      glyphList.put("qofqamatshebrew", "\u05E7\u05B8");
+      glyphList.put("qofqubuts", "\u05E7\u05BB");
+      glyphList.put("qofqubutshebrew", "\u05E7\u05BB");
+      glyphList.put("qofsegol", "\u05E7\u05B6");
+      glyphList.put("qofsegolhebrew", "\u05E7\u05B6");
+      glyphList.put("qofsheva", "\u05E7\u05B0");
+      glyphList.put("qofshevahebrew", "\u05E7\u05B0");
+      glyphList.put("qoftsere", "\u05E7\u05B5");
+      glyphList.put("qoftserehebrew", "\u05E7\u05B5");
       glyphList.put("qparen", "\u24AC");
       glyphList.put("quarternote", "\u2669");
       glyphList.put("qubuts", "\u05BB");
@@ -3957,36 +3956,32 @@ public class PDFFontEncodingTables2 {
       glyphList.put("reharmenian", "\u0580");
       glyphList.put("rehfinalarabic", "\uFEAE");
       glyphList.put("rehiragana", "\u308C");
-      //glyphList.put("rehyehaleflamarabic", "\u0631 FEF3 FE8E 0644");
+      glyphList.put("rehyehaleflamarabic", "\u0631\uFEF3\uFE8E\u0644");
       glyphList.put("rekatakana", "\u30EC");
       glyphList.put("rekatakanahalfwidth", "\uFF9A");
       glyphList.put("resh", "\u05E8");
       glyphList.put("reshdageshhebrew", "\uFB48");
-      /*
-      glyphList.put("reshhatafpatah", "\u05E8 05B2");
-      glyphList.put("reshhatafpatahhebrew", "\u05E8 05B2");
-      glyphList.put("reshhatafsegol", "\u05E8 05B1");
-      glyphList.put("reshhatafsegolhebrew", "\u05E8 05B1");
-      */
+      glyphList.put("reshhatafpatah", "\u05E8\u05B2");
+      glyphList.put("reshhatafpatahhebrew", "\u05E8\u05B2");
+      glyphList.put("reshhatafsegol", "\u05E8\u05B1");
+      glyphList.put("reshhatafsegolhebrew", "\u05E8\u05B1");
       glyphList.put("reshhebrew", "\u05E8");
-      /*
-      glyphList.put("reshhiriq", "\u05E8 05B4");
-      glyphList.put("reshhiriqhebrew", "\u05E8 05B4");
-      glyphList.put("reshholam", "\u05E8 05B9");
-      glyphList.put("reshholamhebrew", "\u05E8 05B9");
-      glyphList.put("reshpatah", "\u05E8 05B7");
-      glyphList.put("reshpatahhebrew", "\u05E8 05B7");
-      glyphList.put("reshqamats", "\u05E8 05B8");
-      glyphList.put("reshqamatshebrew", "\u05E8 05B8");
-      glyphList.put("reshqubuts", "\u05E8 05BB");
-      glyphList.put("reshqubutshebrew", "\u05E8 05BB");
-      glyphList.put("reshsegol", "\u05E8 05B6");
-      glyphList.put("reshsegolhebrew", "\u05E8 05B6");
-      glyphList.put("reshsheva", "\u05E8 05B0");
-      glyphList.put("reshshevahebrew", "\u05E8 05B0");
-      glyphList.put("reshtsere", "\u05E8 05B5");
-      glyphList.put("reshtserehebrew", "\u05E8 05B5");
-      */
+      glyphList.put("reshhiriq", "\u05E8\u05B4");
+      glyphList.put("reshhiriqhebrew", "\u05E8\u05B4");
+      glyphList.put("reshholam", "\u05E8\u05B9");
+      glyphList.put("reshholamhebrew", "\u05E8\u05B9");
+      glyphList.put("reshpatah", "\u05E8\u05B7");
+      glyphList.put("reshpatahhebrew", "\u05E8\u05B7");
+      glyphList.put("reshqamats", "\u05E8\u05B8");
+      glyphList.put("reshqamatshebrew", "\u05E8\u05B8");
+      glyphList.put("reshqubuts", "\u05E8\u05BB");
+      glyphList.put("reshqubutshebrew", "\u05E8\u05BB");
+      glyphList.put("reshsegol", "\u05E8\u05B6");
+      glyphList.put("reshsegolhebrew", "\u05E8\u05B6");
+      glyphList.put("reshsheva", "\u05E8\u05B0");
+      glyphList.put("reshshevahebrew", "\u05E8\u05B0");
+      glyphList.put("reshtsere", "\u05E8\u05B5");
+      glyphList.put("reshtserehebrew", "\u05E8\u05B5");
       glyphList.put("reversedtilde", "\u223D");
       glyphList.put("reviahebrew", "\u0597");
       glyphList.put("reviamugrashhebrew", "\u0597");
@@ -4185,7 +4180,7 @@ public class PDFFontEncodingTables2 {
       glyphList.put("shaddadammaarabic", "\uFC61");
       glyphList.put("shaddadammatanarabic", "\uFC5E");
       glyphList.put("shaddafathaarabic", "\uFC60");
-      //glyphList.put("shaddafathatanarabic", "\u0651 064B");
+      glyphList.put("shaddafathatanarabic", "\u0651\u064B");
       glyphList.put("shaddakasraarabic", "\uFC62");
       glyphList.put("shaddakasratanarabic", "\uFC5F");
       glyphList.put("shade", "\u2592");
@@ -4382,7 +4377,7 @@ public class PDFFontEncodingTables2 {
       glyphList.put("tchehfinalarabic", "\uFB7B");
       glyphList.put("tchehinitialarabic", "\uFB7C");
       glyphList.put("tchehmedialarabic", "\uFB7D");
-      //glyphList.put("tchehmeeminitialarabic", "\uFB7CFEE4");
+      glyphList.put("tchehmeeminitialarabic", "\uFB7C\uFEE4");
       glyphList.put("tcircle", "\u24E3");
       glyphList.put("tcircumflexbelow", "\u1E71");
       glyphList.put("tcommaaccent", "\u0163");

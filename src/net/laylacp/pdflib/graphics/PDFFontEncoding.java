@@ -41,6 +41,7 @@ public class PDFFontEncoding {
     // for type 3 fonts
     private HashMap<Integer, String> encodingTable3;
 
+    public String[] getEncodingTable() { return encodingTable; }
 
     public PDFFontEncoding(String fontEncoding) {
         if(fontEncoding.equalsIgnoreCase("MacRomanEncoding")) {

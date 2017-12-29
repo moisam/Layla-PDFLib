@@ -115,7 +115,7 @@ public class Operator {
             new Operator("k", 0),
 
             /* shading patterns operators */
-            new Operator("sh", 0),
+            new Operator("sh", 1),
 
             /* inline images operators */
             new Operator("BI", 0),

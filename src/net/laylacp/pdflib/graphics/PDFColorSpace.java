@@ -74,17 +74,20 @@ public class PDFColorSpace implements Cloneable {
     // only valid for Separation color spaces
     private int altFamily;
     private PDFFunction tintTransform;
+    // only valid for Indexed color spaces
+    byte[] lookup;
 
 
     public PDFColorSpace(int family, HashMap<String, PDFObject> Resources, PDFDocument pdfDocument) {
         this.family = family;
         this.Resources = Resources;
         this.pdfDocument = pdfDocument;
-        setComponentCount();
+        setComponentCount(family);
     }
 
     public PDFColorSpace(PDFDocument pdfDocument) {
         this.pdfDocument = pdfDocument;
+        this.family = Unknown;
     }
 
     @Override
@@ -96,6 +99,7 @@ public class PDFColorSpace implements Cloneable {
         colorSpace.pdfDocument = this.pdfDocument;
         colorSpace.colorComponents = this.colorComponents;
         colorSpace.altFamily = this.altFamily;
+        colorSpace.tintTransform = this.tintTransform;
         if(this.whitePoint != null) colorSpace.whitePoint = this.whitePoint.clone();
         if(this.blackPoint != null) colorSpace.blackPoint = this.blackPoint.clone();
         colorSpace.gamma = this.gamma;
@@ -103,22 +107,23 @@ public class PDFColorSpace implements Cloneable {
         if(this.calRGBMatrix != null) colorSpace.calRGBMatrix = this.calRGBMatrix.clone();
         if(this.iccColorSpace != null)
             colorSpace.iccColorSpace = new ICC_ColorSpace(this.iccColorSpace.getProfile());
+        if(this.lookup != null) colorSpace.lookup = this.lookup.clone();
         return colorSpace;
     }
 
     public static int getColorSpaceIndex(String csName) {
         int cs;
-        if(csName.equals("DeviceGray")) cs = DeviceGray;
-        else if(csName.equals("DeviceRGB")) cs = DeviceRGB;
+        if(csName.equals("DeviceGray"))      cs = DeviceGray;
+        else if(csName.equals("DeviceRGB" )) cs = DeviceRGB;
         else if(csName.equals("DeviceCMYK")) cs = DeviceCMYK;
-        else if(csName.equals("CalGray")) cs = CalGray;
-        else if(csName.equals("CalRGB")) cs = CalRGB;
-        else if(csName.equals("Lab")) cs = Lab;
-        else if(csName.equals("ICCBased")) cs = ICCBased;
-        else if(csName.equals("Pattern")) cs = Pattern;
-        else if(csName.equals("Indexed")) cs = Indexed;
+        else if(csName.equals("CalGray"   )) cs = CalGray;
+        else if(csName.equals("CalRGB"    )) cs = CalRGB;
+        else if(csName.equals("Lab"       )) cs = Lab;
+        else if(csName.equals("ICCBased"  )) cs = ICCBased;
+        else if(csName.equals("Pattern"   )) cs = Pattern;
+        else if(csName.equals("Indexed"   )) cs = Indexed;
         else if(csName.equals("Separation")) cs = Separation;
-        else if(csName.equals("DeviceN")) cs = DeviceN;
+        else if(csName.equals("DeviceN"   )) cs = DeviceN;
         else {
             /*
              * We might need to search the ColorSpace sub-dictionary in Resources.
@@ -145,15 +150,21 @@ public class PDFColorSpace implements Cloneable {
             if(setColorSpaceFamily(csStream)) return true;
             else return false;
         } else if(cs == Pattern) {
-            return false;
+            /*
+             * This is a Coloured Tiling Pattern, as they have no color arguments,
+             * only the /Pattern name.
+             */
+            family = cs;
+            colorComponents = 0;
+            return true;
         }
 
         family = cs;
-        setComponentCount();
+        setComponentCount(family);
         return true;
     }
 
-    private void setComponentCount() {
+    private void setComponentCount(int family) {
         if(family == DeviceGray || family == CalGray || family == Indexed) colorComponents = 1;
         else if(family == DeviceRGB || family == CalRGB || family == Lab) colorComponents = 3;
         else if(family == DeviceCMYK) colorComponents = 4;
@@ -166,69 +177,138 @@ public class PDFColorSpace implements Cloneable {
             String csName = csObject.getStringValue();
             return setColorSpaceFamily(csName);
         } else if(csObject.getType() == PDFObject.OBJECT_TYPE.ARRAY_OBJECT) {
+            ArrayList<PDFObject> op = (ArrayList<PDFObject>) csObject.getValue();
+            PDFObject object = op.get(0);
+            int csi = getColorSpaceIndex(object.getValue().toString());
+                /*
+                 * PDF Std says: Indexed Colour spaces shall be defined by an array
+                 *               [/Indexed base hival lookup]
+                 */
+            if(csi == Indexed) {
+                return setIndexedColorSpace(op);
+
+            } else if(csi == DeviceN) {
+                /*
+                 * PDF Std says: A DeviceN colour space shall be specified as follows:
+                 *                 [/DeviceN names alternateSpace tintTransform]
+                 *               or
+                 *                 [/DeviceN names alternateSpace tintTransform attributes]
+                 */
+                return setDeviceNColorSpace(op);
+
+            } else if(csi == Pattern) {
+                /*
+                 * PDF Std says: Uncoloured Tiling Patterns shall be defined by an array
+                 *               [/Pattern /Underlying-CS]
+                 */
+                return setUncoloredTilingPattern(op);
+
+            } else {
                 /*
                  * PDF Std says: Colour spaces in the CIE-based families shall be defined by an array
                  *               [name dictionary]
                  */
-            ArrayList<PDFObject> op = (ArrayList<PDFObject>) csObject.getValue();
-            PDFObject object = op.get(0);
-            int csi = getColorSpaceIndex(object.getValue().toString());
-            object = op.get(1);
-            if(object.getType() == PDFObject.OBJECT_TYPE.DICTIONARY_OBJECT) {
-                HashMap<String, PDFObject> dict = (HashMap<String, PDFObject>) object.getValue();
-                float[] whitePoint = getCIETristimulusValue(dict, "WhitePoint");
-                float[] blackPoint = { 0.0F, 0.0F, 0.0F };
-                if(dict.containsKey("BlackPoint"))
-                    blackPoint = getCIETristimulusValue(dict, "BlackPoint");
-                family = csi;
-                setWhitePoint(whitePoint);
-                setBlackPoint(blackPoint);
+                object = op.get(1);
+                if (object.getType() == PDFObject.OBJECT_TYPE.DICTIONARY_OBJECT) {
+                    HashMap<String, PDFObject> dict = (HashMap<String, PDFObject>) object.getValue();
+                    float[] whitePoint = getCIETristimulusValue(dict, "WhitePoint");
+                    float[] blackPoint = {0.0F, 0.0F, 0.0F};
+                    if (dict.containsKey("BlackPoint"))
+                        blackPoint = getCIETristimulusValue(dict, "BlackPoint");
+                    family = csi;
+                    setWhitePoint(whitePoint);
+                    setBlackPoint(blackPoint);
 
-                if(csi == PDFColorSpace.CalGray) {
-                    float gamma = 1.0F;
-                    if(dict.containsKey("Gamma"))
-                        gamma = (float) PDFDict.getRealDictEntry(dict, "Gamma");
-                    this.gamma = gamma;
-                } else if(csi == PDFColorSpace.CalRGB) {
-                    float[] gamma = { 1.0F, 1.0F, 1.0F };
-                    if(dict.containsKey("Gamma"))
-                        gamma = getCIETristimulusValue(dict, "Gamma");
-                    float[] matrix = { 1, 0, 0, 0, 1, 0, 0, 0, 1 };
-                    if(dict.containsKey("Matrix")) {
-                        gamma = getCIETristimulusValue(dict, "Matrix");
-                        ArrayList<PDFObject> array = PDFDict.getArrayDictEntry(dict, "Matrix");
-                        if(array.size() >= 9) {
-                            float Xa = (float) array.get(0).getNumericValue();
-                            float Ya = (float) array.get(1).getNumericValue();
-                            float Za = (float) array.get(2).getNumericValue();
-                            float Xb = (float) array.get(3).getNumericValue();
-                            float Yb = (float) array.get(4).getNumericValue();
-                            float Zb = (float) array.get(5).getNumericValue();
-                            float Xc = (float) array.get(6).getNumericValue();
-                            float Yc = (float) array.get(7).getNumericValue();
-                            float Zc = (float) array.get(8).getNumericValue();
-                            float f[] = { Xa, Ya, Za, Xb, Yb, Zb, Xc, Yc, Zc };
-                            matrix = f;
+                    if (csi == PDFColorSpace.CalGray) {
+                        float gamma = 1.0F;
+                        if (dict.containsKey("Gamma"))
+                            gamma = (float) PDFDict.getRealDictEntry(dict, "Gamma");
+                        this.gamma = gamma;
+                    } else if (csi == PDFColorSpace.CalRGB) {
+                        float[] gamma = {1.0F, 1.0F, 1.0F};
+                        if (dict.containsKey("Gamma"))
+                            gamma = getCIETristimulusValue(dict, "Gamma");
+                        float[] matrix = {1, 0, 0, 0, 1, 0, 0, 0, 1};
+                        if (dict.containsKey("Matrix")) {
+                            gamma = getCIETristimulusValue(dict, "Matrix");
+                            ArrayList<PDFObject> array = PDFDict.getArrayDictEntry(dict, "Matrix");
+                            if (array.size() >= 9) {
+                                float Xa = (float) array.get(0).getNumericValue();
+                                float Ya = (float) array.get(1).getNumericValue();
+                                float Za = (float) array.get(2).getNumericValue();
+                                float Xb = (float) array.get(3).getNumericValue();
+                                float Yb = (float) array.get(4).getNumericValue();
+                                float Zb = (float) array.get(5).getNumericValue();
+                                float Xc = (float) array.get(6).getNumericValue();
+                                float Yc = (float) array.get(7).getNumericValue();
+                                float Zc = (float) array.get(8).getNumericValue();
+                                float f[] = {Xa, Ya, Za, Xb, Yb, Zb, Xc, Yc, Zc};
+                                matrix = f;
+                            }
                         }
-                    }
-                    this.gammaRGB = gamma;
-                    this.calRGBMatrix = matrix;
-                    return true;
-                } else if(csi == PDFColorSpace.Lab) {
+                        this.gammaRGB = gamma;
+                        this.calRGBMatrix = matrix;
+                        return true;
+                    } else if (csi == PDFColorSpace.Lab) {
                         /*
                          * TODO: we should read the Range array and apply it's bounds.
                          * SEE Table 65 – Entries in a Lab Colour Space Dictionary, page 148, PDF 1.7.
                          */
-                }
-            } else if(object.getType() == PDFObject.OBJECT_TYPE.INDIRECT_REF_OBJECT) {
-                PDFObjectStream csStream = pdfDocument.reader.
+                    }
+                } else if (object.getType() == PDFObject.OBJECT_TYPE.INDIRECT_REF_OBJECT) {
+                    PDFObjectStream csStream = pdfDocument.reader.
                             getObjectStreamById(object.getIdValue(), pdfDocument);
-                if(csStream == null) return false;
-                if(setColorSpaceFamily(csStream)) return true;
-                else return false;
+                    if (csStream == null) return false;
+                    if (setColorSpaceFamily(csStream)) return true;
+                    else return false;
+                }
             }
         }
         return false;
+    }
+
+    private boolean setDeviceNColorSpace(ArrayList<PDFObject> op) {
+        return false;
+    }
+
+    private boolean setUncoloredTilingPattern(ArrayList<PDFObject> op) {
+        PDFObject object = op.get(1);     // base space
+        String s = object.getStringValue();
+        altFamily = getColorSpaceIndex(s);
+        if(altFamily == Unknown) return false;
+        setColorComponents(altFamily);
+        return true;
+    }
+
+    private boolean setIndexedColorSpace(ArrayList<PDFObject> op) {
+        PDFObject object = op.get(1);     // base space
+        if(object.getType() == PDFObject.OBJECT_TYPE.ARRAY_OBJECT) {
+            /*
+             * TODO: implement this
+             */
+            return false;
+        } else {
+            String s = object.getStringValue();
+            altFamily = getColorSpaceIndex(s);
+        }
+        colorComponents = 1;
+
+        object = op.get(2);     // hival
+        int hival = object.getIntValue();
+
+        object = op.get(3);     // lookup table
+        if(object.getType() == PDFObject.OBJECT_TYPE.INDIRECT_REF_OBJECT) {
+            PDFObjectStream objectStream = pdfDocument.reader.
+                    getObjectStreamById(object.getIdValue(), pdfDocument);
+            if(objectStream == null) return false;
+            lookup = objectStream.stream.data;
+        } else if(object.getType() == PDFObject.OBJECT_TYPE.STRING_OBJECT) {
+            lookup = object.getBytes();
+        } else {
+            // lookup can be either a stream or a byte string.
+            return false;
+        }
+        return true;
     }
 
     /*
@@ -282,6 +362,35 @@ public class PDFColorSpace implements Cloneable {
                 return false;
             }
             colorComponents = tintTransform.getInputCount();
+            return true;
+        } else if(type.equalsIgnoreCase("DeviceN")) {
+            // get the 'names' array
+            PDFObject namesObj = arrayList.get(1);
+            if(namesObj.getType() != PDFObject.OBJECT_TYPE.ARRAY_OBJECT) return false;
+            colorComponents = namesObj.getArrayValue().size();
+            PDFObject altFamilyObj = arrayList.get(2);
+            altFamily = getColorSpaceIndex(altFamilyObj.getStringValue());
+            if(altFamily == Unknown) return false;
+            family = DeviceN;
+            tintTransform = new PDFFunction(pdfDocument);
+            PDFObject funcObj = arrayList.get(3);
+            if(funcObj.getType() == PDFObject.OBJECT_TYPE.DICTIONARY_OBJECT) {
+                if(!tintTransform.parse(funcObj.getDictionaryValue())) return false;
+            } else if(funcObj.getType() == PDFObject.OBJECT_TYPE.INDIRECT_REF_OBJECT) {
+                if(!tintTransform.parse(funcObj.getIdValue())) return false;
+            } else {
+                return false;
+            }
+            /*
+             * this step is actually redundant, as we already got the component count from
+             * the length of the 'names' array above.
+             */
+            colorComponents = tintTransform.getInputCount();
+            return true;
+        } else if(type.equalsIgnoreCase("Indexed")) {
+            return setIndexedColorSpace(arrayList);
+        } else if(type.equalsIgnoreCase("Pattern")) {
+            return setUncoloredTilingPattern(arrayList);
         }
         return false;
     }
@@ -308,7 +417,7 @@ public class PDFColorSpace implements Cloneable {
     }
 
     public Color getColor(float[] components) {
-        if(family == Separation) {
+        if(family == Separation || family == DeviceN) {
             float[] c = tintTransform.doFunction(components);
             return getColor(c, altFamily);
         } else {
@@ -341,9 +450,22 @@ public class PDFColorSpace implements Cloneable {
             Float Ls = components[0];
             return PDFColor.LabToRGB(Ls, as, bs, this);
         } else if(family == ICCBased) {
-            if(iccColorSpace == null) return PDFColorSpace.BLACK_RGB;
+            if (iccColorSpace == null) return PDFColorSpace.BLACK_RGB;
             float[] rgb = iccColorSpace.toRGB(components);
             return new Color(ColorSpace.getInstance(ColorSpace.CS_sRGB), rgb, 1.0F);
+        } else if(family == Indexed) {
+            int index = (int) components[0];
+            int count = 1;
+            if(altFamily == DeviceRGB || altFamily == CalRGB || altFamily == Lab) count = 3;
+            else if(altFamily == DeviceCMYK) count = 4;
+
+            int i = index*count;
+            components = new float[count];
+            index = 0;
+            while(count-- > 0) {
+                components[index++] = lookup[i++]/255;
+            }
+            return getColor(components, altFamily);
         }
         return PDFColorSpace.BLACK_RGB;
     }
@@ -410,5 +532,16 @@ public class PDFColorSpace implements Cloneable {
 
     public void setColorComponents(int colorComponents) {
         this.colorComponents = colorComponents;
+    }
+
+    public PDFPattern getPattern(String patternName, float[] color, PDFDraw parent) {
+        PDFPattern pattern = new PDFPattern(pdfDocument);
+        Color color1 = null;
+        if(colorComponents > 0) {
+            color1 = getColor(color, altFamily);
+        }
+        if(pattern.setPattern(patternName, color1, Resources, parent))
+             return pattern;
+        else return null;
     }
 }

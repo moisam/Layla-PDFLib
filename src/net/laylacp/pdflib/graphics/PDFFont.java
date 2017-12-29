@@ -89,6 +89,21 @@ public class PDFFont {
 
     public int getType() { return type; }
 
+    public String getBaseFont() { return baseFont; }
+
+    public PDFFontEncoding getEncoding() { return encoding; }
+
+    public void setWidthArray(int[] widthArray) { this.widthArray = widthArray; }
+
+    public void setFirstChar(int firstChar) { this.firstChar = firstChar; }
+
+    public void setLastChar(int lastChar) { this.lastChar = lastChar; }
+
+    public void setFontDescriptor(PDFFontDescriptor fontDescriptor) {
+        this.fontDescriptor = fontDescriptor;
+    }
+
+
     public static PDFFont getPDFFont(String fontName, HashMap<String, PDFObject> resources,
                                      PDFDocument pdfDocument) {
         // get the Fonts dictionary from Resources
@@ -226,6 +241,7 @@ public class PDFFont {
                             /*
                              * TODO: handle Type 0 (which are CCF-based) fonts
                              */
+                            pdfFont.fontDescriptor.fontFileFormat = CIDTYPE0_FONT;
                         }
                     }
                 } else {
@@ -273,7 +289,6 @@ public class PDFFont {
                         }
                     }
                 }
-
             }
         } else {
             // get the Widths array
@@ -286,31 +301,37 @@ public class PDFFont {
                 for (PDFObject object : array) {
                     pdfFont.widthArray[i++] = object.getIntValue();
                 }
-            }
-        /*
-         * TODO: Finish this.
-         * SEE Table 111 – Entries in a Type 1 font dictionary, page 254-255.
-         */
-            PDFObject object = PDFDict.getDictionaryEntry(dictionary, "FontDescriptor", null);
-            if (object != null) {
-                HashMap<String, PDFObject> fontDescriptor = object.getDictionaryValueNoFail(pdfDocument);
-                if (fontDescriptor.size() == 0) {
+
+                /*
+                 * TODO: Finish this.
+                 * SEE Table 111 – Entries in a Type 1 font dictionary, page 254-255.
+                 */
+                PDFObject object = PDFDict.getDictionaryEntry(dictionary, "FontDescriptor", null);
+                if (object != null) {
+                    HashMap<String, PDFObject> fontDescriptor = object.getDictionaryValueNoFail(pdfDocument);
+                    if (fontDescriptor.size() == 0) {
+                    /*
                     if (pdfFont.type == TYPE1_FONT || pdfFont.type == MMTYPE1_FONT) {
                         for (int i = 0; i < stdFontNames.length; i++) {
                             if (baseFont.equalsIgnoreCase(stdFontNames[i])) {
-                                /*
-                                 * TODO: load standard font metrics.
-                                 */
+                                 //
+                                 // TODO: load standard font metrics.
+                                 //
                             }
                         }
                     }
-                } else pdfFont.readFontDescriptor(fontDescriptor);
-            } else {
+                    */
+                    } else pdfFont.readFontDescriptor(fontDescriptor);
+                } else {
                 /*
                  * TODO: do something!!!
                  */
-                PDFFontDescriptor pdfFontDescriptor = new PDFFontDescriptor();
-                pdfFont.fontDescriptor = pdfFontDescriptor;
+                    PDFFontDescriptor pdfFontDescriptor = new PDFFontDescriptor();
+                    pdfFont.fontDescriptor = pdfFontDescriptor;
+                }
+            } else {
+                // check for the builtin fonts
+                if (!PDFFontBuiltin.getBuiltinMetrics(pdfFont)) return null;
             }
         }
         fontCache.add(pdfFont);
@@ -376,6 +397,9 @@ public class PDFFont {
             fileId = PDFDict.getIndirectRefDictEntry(dictionary, "FontFile2");
             if(fileId.equals(PDFDict.invalidObjectId)) {
                 fileId = PDFDict.getIndirectRefDictEntry(dictionary, "FontFile3");
+                if(!fileId.equals(PDFDict.invalidObjectId)) {
+                    pdfFontDescriptor.fontFileFormat = CIDTYPE0_FONT;
+                }
             } else pdfFontDescriptor.fontFileFormat = TRUETYPE_FONT;
         } else pdfFontDescriptor.fontFileFormat = TYPE1_FONT;
 
@@ -425,6 +449,16 @@ public class PDFFont {
                         // flip the font upside down
                         AffineTransform newCTM = AffineTransform.getScaleInstance(1, -1);
                         font = font.deriveFont(newCTM);
+                    } else if(fontDescriptor.fontFileFormat == CIDTYPE0_FONT) {
+                        PDFFontCFF cff = new PDFFontCFF(fontDescriptor.fontFile.stream);
+                        byte[] in = cff.convertToType1();
+                        if(in != null){
+                            is = new ByteArrayInputStream(in);
+                            font = Font.createFont(Font.TYPE1_FONT, is);
+                            // flip the font upside down
+                            AffineTransform newCTM = AffineTransform.getScaleInstance(1, -1);
+                            font = font.deriveFont(newCTM);
+                        }
                     }
                     if(font != null) {
                         font = font.deriveFont((float) size);
@@ -484,9 +518,6 @@ public class PDFFont {
         if(type == TYPE3_FONT)
             return widthArray[charCode-firstChar]/1000;
         System.out.println("charWidth = " + widthArray[charCode-firstChar]);
-        if(widthArray[charCode-firstChar] == 0) {
-            widthArray[charCode-firstChar] = widthArray[charCode-firstChar];
-        }
         return widthArray[charCode-firstChar];
     }
 
